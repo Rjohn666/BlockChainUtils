@@ -15,9 +15,11 @@ class MempoolAPIClient(AsyncRequestClient):
 
     def __init__(self, testnet=False):
         if testnet:
-            self.endpoint = "https://mempool.space/testnet"
+            self.endpoint = "https://mempool-testnet.fractalbitcoin.io"
         else:
-            self.endpoint = "https://mempool.space"
+            self.endpoint = "https://mempool.fractalbitcoin.io"
+            # self.endpoint = "https://mempool.fractalbitcoin.io"
+            print("endpoint:", self.endpoint)
         super(MempoolAPIClient, self).__init__()
 
 

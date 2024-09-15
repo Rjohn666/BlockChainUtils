@@ -14,7 +14,7 @@ sys.path.append("..")
 from bcutils.btc.ordinals import (
     setup,
     ordi_mint,
-    brc20_mint, ordi_mint_img,build_commit_privkey,build_reveal_privkey
+    brc20_mint, ordi_mint_img
 )
 
 def get_svg_strings(directory,count=10):
@@ -59,23 +59,23 @@ async def main():
     """
 
     testnet = False
-    mnemonic = "board sphere gather beyond address mix jeans frog defy exhaust retreat car"
+    mnemonic = ""
     receive_address = "bc1pje7eu9m4htsqref4q5v8mfkf3vzmthgdjdhpj8axs3fwut5qay4s9amhuf"
     setup(testnet, mnemonic=mnemonic)
 
+    # example: ordi mint
 
-    img_list = get_svg_strings('./svgs',20)
-    print(img_list)
-    img_push_data = [
-        spilt_img_push_data(i) for i in img_list
-    ]
-
-
-
-    txs = await ordi_mint_img(receive_address, pushdata_list=img_push_data, gas=5000)
+    # img_list = get_svg_strings('./svgs',20)
+    # print(img_list)
+    # img_push_data = [
+    #     spilt_img_push_data(i) for i in img_list
+    # ]
 
 
-    # txs = await brc20_mint(receive_address, brc20, amount, 20, gas=500)
+    # txs = await ordi_mint_img(receive_address, pushdata_list=img_push_data, gas=3000)
+
+
+    txs = await brc20_mint(receive_address, 'elonmusk', 1000, 20, gas=6000)
 
 
 

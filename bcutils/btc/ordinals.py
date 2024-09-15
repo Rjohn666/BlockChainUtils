@@ -40,9 +40,10 @@ from ..utils.codec_util import str2hexstr, hexstr2str
 
 
 ORDI_HEX = "6f7264"                                             # ordi
-TYPE_HEX = "746578742f706c61696e"                               # text/plain
+TYPE_HEX = "746578742f706c61696e3b636861727365743d7574662d38"                               # text/plain
+SVG_TYPE_HEX = "696d6167652f7376672b786d6c"                               # image/svg+xml
 TXID_REPLACE = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-ORDI_SATS = 546
+ORDI_SATS = 330
 
 TESTNET = True
 NETWORK = "testnet"
@@ -80,7 +81,7 @@ def setup(testnet: bool, mnemonic=None):
 
 def brc20_text_builder(op, tick, amt):
     assert op in {"mint", "transfer"}, f"brc-20 op must in {mint, transfer}"
-    assert len(tick) == 4, f"len of tick must equal to 4"
+    # assert len(tick) == 4, f"len of tick must equal to 4"
     info = {
         "p": "brc-20",
         "op": op,
@@ -168,12 +169,12 @@ def control_block_hex_fix(control_block, internal_pubkey, script):
     t = tagged_hash("TapTweak", bytes.fromhex(p) + k0)
     tweak_int = b_to_i(t)
     Q = point_add(P, point_mul(G, tweak_int))
-    print(y(Q))
+    # print(y(Q))
 
-    logger.info(f"ControlBlockHex Fix Before[{control_block_hex}]")
+    # logger.info(f"ControlBlockHex Fix Before[{control_block_hex}]")
     control_block_version = int(control_block_hex[:2], base=16) | y(Q) % 2
     control_block_fix = f"{control_block_version:2x}{control_block_hex[2:]}"
-    logger.info(f"ControlBlockHex Fix After[{control_block_fix}]")
+    # logger.info(f"ControlBlockHex Fix After[{control_block_fix}]")
 
     return control_block_fix
 
@@ -229,7 +230,21 @@ def get_receive_witness_program(address):
     return witness_program
 
 
-def build_script(interal_pubkey, ordi_hex):
+def build_script(interal_pubkey, ordi_hex,is_img=False):
+    if is_img:
+        script = Script([
+            interal_pubkey.to_x_only_hex(),
+            "OP_CHECKSIG",
+            "OP_0",
+            "OP_IF",
+            ORDI_HEX,
+            "01",
+            SVG_TYPE_HEX,
+            "OP_0",
+            *ordi_hex,
+            "OP_ENDIF",
+        ])
+        return script
     script = Script([
         interal_pubkey.to_x_only_hex(),
         "OP_CHECKSIG",
@@ -245,7 +260,7 @@ def build_script(interal_pubkey, ordi_hex):
     return script
 
 
-def build_script_pointer_mode(interal_pubkey, ordi_hex_list):
+def build_script_pointer_mode(interal_pubkey, ordi_hex_list,is_img):
     def i_to_h(i):
         if i < 0x100:
             return i.to_bytes(byteorder="little").hex()
@@ -253,6 +268,35 @@ def build_script_pointer_mode(interal_pubkey, ordi_hex_list):
             return i.to_bytes(2, byteorder="little").hex()
         else:
             return i.to_bytes(3, byteorder="little").hex()
+    if is_img:
+        script_init = [
+            interal_pubkey.to_x_only_hex(),
+            "OP_CHECKSIG",
+            "OP_0",
+            "OP_IF",
+            ORDI_HEX,
+            "01",
+            SVG_TYPE_HEX,
+            "OP_0",
+            *ordi_hex_list[0],
+            "OP_ENDIF",
+        ]
+        for idx, ordi_hex in enumerate(ordi_hex_list[1:]):
+            pointer = ORDI_SATS * (idx + 1)
+            script_init += [
+                "OP_0",
+                "OP_IF",
+                ORDI_HEX,
+                "01",
+                SVG_TYPE_HEX,
+                "02",
+                i_to_h(pointer),
+                "OP_0",
+                *ordi_hex,
+                "OP_ENDIF",
+            ]
+        return Script(script_init)
+
     script_init = [
         interal_pubkey.to_x_only_hex(),
         "OP_CHECKSIG",
@@ -260,7 +304,7 @@ def build_script_pointer_mode(interal_pubkey, ordi_hex_list):
         "OP_IF",
         ORDI_HEX,
         "01",
-        TYPE_HEX,
+        SVG_TYPE_HEX if is_img else TYPE_HEX,
         "OP_0",
         ordi_hex_list[0],
         "OP_ENDIF",
@@ -287,11 +331,12 @@ async def get_address_utxo(address, sats, mode="ge"):
     assert mode in {"ge", "eq"}, "Mode Must in {ge, eq}"
 
     client = MempoolAPIClient(testnet=TESTNET)
-    btc = f"0.{sats:0>8d}"
+    btc = sats/100000000
 
     for t in range(60):
         logger.info(f"Look For Address[{address}]UTXO[{sats}]BTC[{btc}]")
         utxos = await client.get_address_utxos(address)
+        print('getutxo:',utxos)
         if mode == "eq":
             utxos = [
                 utxo for utxo in utxos
@@ -327,23 +372,22 @@ async def tx_broadcast(txhex):
     return txid
 
 
-async def ordi_minter(receive_address, ordi_hex_list, gas):
+async def ordi_minter(receive_address, ordi_hex_list, gas,is_img=False):
 
-    logger.info(
-        f"ORDI Minter Start"
-        f"[receive_address={receive_address}]"
-        f"[ordi_hex_list={ordi_hex_list}]"
-        f"[gas={gas}]"
-    )
+    # logger.info(
+    #     f"ORDI Minter Start"
+    #     f"[receive_address={receive_address}]"
+    #     f"[ordi_hex_list={ordi_hex_list}]"
+    #     f"[gas={gas}]"
+    # )
 
     commit_privkey = build_commit_privkey(1713267002)
     commit_pubkey = commit_privkey.get_public_key()
     commit_address = commit_pubkey.get_taproot_address()
-    logger.info(f"Commit Address[{commit_address.to_string()}]")
+    # logger.info(f"Commit Address[{commit_address.to_string()}]")
 
     reveal_privkey = build_reveal_privkey(1713267002)
     reveal_pubkey = reveal_privkey.get_public_key()
-
     # 构建接受铭文地址的witness program
     #receive_witness_program = P2trAddress(address=receive_address).to_script_pub_key()
     if TESTNET:
@@ -354,15 +398,14 @@ async def ordi_minter(receive_address, ordi_hex_list, gas):
         receive_witness_program = get_receive_witness_program(
             receive_address,
         )
-    logger.info(f"Receive WitnessProgram[{receive_witness_program}]")
-
+    # logger.info(f"Receive WitnessProgram[{receive_witness_program}]")
     reveal_total_sats = 0
     reveal_txouts_list = []
     for ordi_hex in ordi_hex_list:
-        script = build_script(reveal_pubkey, ordi_hex)
-        logger.info(f"Script[{script}]")
+        script = build_script(reveal_pubkey, ordi_hex,is_img)
+        # logger.info(f"Script[{script}]")
         reveal_address = reveal_pubkey.get_taproot_address([[script]])
-        logger.info(f"Reveal Address[{reveal_address.to_string()}]")
+        # logger.info(f"Reveal Address[{reveal_address.to_string()}]")
 
         pre_reveal_tx = build_reveal_tx(
             reveal_privkey,
@@ -375,11 +418,11 @@ async def ordi_minter(receive_address, ordi_hex_list, gas):
             ],
         )
         reveal_vsize = pre_reveal_tx.get_vsize()
-        logger.info(f"Pre Reveal VSize[{reveal_vsize}][{script}]")
+        # logger.info(f"Pre Reveal VSize[{reveal_vsize}][{script}]")
         reveal_fee_sats = round(reveal_vsize * gas)
         reveal_sats = reveal_fee_sats + ORDI_SATS
         reveal_txouts_list.append([reveal_sats, reveal_address, script])
-        logger.info(f"Pre Reveal Sats[{reveal_sats}][{script}]")
+        # logger.info(f"Pre Reveal Sats[{reveal_sats}][{script}]")
         reveal_total_sats += reveal_sats
     logger.info(f"Pre Reveal Total Satoshi[{reveal_total_sats}]")
 
@@ -395,7 +438,7 @@ async def ordi_minter(receive_address, ordi_hex_list, gas):
     )
 
     commit_total_vsize = pre_commit_tx.get_vsize()
-    logger.info(f"Pre Commit Total VSize[{commit_total_vsize}]")
+    # logger.info(f"Pre Commit Total VSize[{commit_total_vsize}]")
     commit_fee_total_sats = round(commit_total_vsize * gas)
     commit_total_sats = commit_fee_total_sats + reveal_total_sats
     logger.info(f"Pre Commit Total Satoshi[{commit_total_sats}]")
@@ -432,10 +475,10 @@ async def ordi_minter(receive_address, ordi_hex_list, gas):
             ],
         )
         commit_total_vsize = fix_commit_tx.get_vsize()
-        logger.info(f"Final Commit Total VSize[{commit_total_vsize}]")
+        # logger.info(f"Final Commit Total VSize[{commit_total_vsize}]")
         commit_fee_total_sats = round(commit_total_vsize * gas)
         commit_total_sats = commit_fee_total_sats + reveal_total_sats
-        logger.info(f"Final Commit Total Satoshi[{commit_total_sats}]")
+        # logger.info(f"Final Commit Total Satoshi[{commit_total_sats}]")
         change_sats = commit_utxo["value"] - commit_total_sats
         txouts = [
             TxOutput(reveal_sats, reveal_address.to_script_pub_key())
@@ -494,7 +537,7 @@ async def ordi_minter(receive_address, ordi_hex_list, gas):
     return txs
 
 
-async def ordi_minter_pointer_mode(receive_address, ordi_hex_list, gas, commit_privkey=None):
+async def ordi_minter_pointer_mode(receive_address, ordi_hex_list, gas, is_img,commit_privkey=None):
 
     logger.info(
         f"ORDI Minter Seperate-Output Point Mode Start"
@@ -519,7 +562,7 @@ async def ordi_minter_pointer_mode(receive_address, ordi_hex_list, gas, commit_p
         )
     logger.info(f"Receive WitnessProgram[{receive_witness_program}]")
 
-    script = build_script_pointer_mode(reveal_pubkey, ordi_hex_list)
+    script = build_script_pointer_mode(reveal_pubkey, ordi_hex_list,is_img)
     reveal_address = reveal_pubkey.get_taproot_address([[script]])
     logger.info(f"Reveal Address[{reveal_address.to_string()}]")
 
@@ -582,12 +625,21 @@ async def ordi_mint(receive_address, ordi_str_list, gas=10):
     logger.info(json.dumps(txs, indent=1))
     return txs
 
+async def ordi_mint_img(receive_address, pushdata_list, gas=10):
+    btc_setup(NETWORK)
+
+    txs = await ordi_minter(receive_address, pushdata_list,gas,is_img=True)
+    logger.info(json.dumps(txs, indent=1))
+    return txs
+
 
 async def brc20_mint(receive_address, brc20, amount, repeat, gas=1):
 
     btc_setup(NETWORK)
 
     brc20_hex = brc20_hex_mint(brc20, str(amount))
+    print(brc20_hex)
+    exit()
     txs = await ordi_minter(receive_address, [brc20_hex]*repeat, gas)
     logger.info(json.dumps(txs, indent=1))
     return txs
