@@ -59,7 +59,7 @@ async def main():
     """
 
     testnet = False
-    mnemonic = "board sphere gather beyond address mix jeans frog defy exhaust retreat car"
+    mnemonic = ""
     receive_address = "bc1pje7eu9m4htsqref4q5v8mfkf3vzmthgdjdhpj8axs3fwut5qay4s9amhuf"
     setup(testnet, mnemonic=mnemonic)
 
